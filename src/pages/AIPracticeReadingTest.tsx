@@ -17,9 +17,11 @@ import { HighlightNoteProvider } from '@/hooks/useHighlightNotes';
 import { NoteSidebar } from '@/components/common/NoteSidebar';
 import { SubmitConfirmDialog } from '@/components/common/SubmitConfirmDialog';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/hooks/useAuth';
 import { 
-  loadGeneratedTest, 
-  savePracticeResult,
+  loadGeneratedTest,
+  loadGeneratedTestAsync,
+  savePracticeResultAsync,
   GeneratedTest,
   PracticeResult,
   QuestionResult 
@@ -59,6 +61,7 @@ interface QuestionGroup {
 export default function AIPracticeReadingTest() {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   
   const [test, setTest] = useState<GeneratedTest | null>(null);
   const [passages, setPassages] = useState<Passage[]>([]);
@@ -81,20 +84,8 @@ export default function AIPracticeReadingTest() {
   
   const startTimeRef = useRef<number>(Date.now());
 
-  // Load AI-generated test and convert to Cambridge format
-  useEffect(() => {
-    if (!testId) {
-      navigate('/ai-practice');
-      return;
-    }
-
-    const loadedTest = loadGeneratedTest(testId);
-    if (!loadedTest || loadedTest.module !== 'reading') {
-      toast.error('Reading test not found');
-      navigate('/ai-practice');
-      return;
-    }
-
+  // Helper to initialize state from test data
+  const initializeTest = useCallback((loadedTest: GeneratedTest) => {
     setTest(loadedTest);
     setTimeLeft(loadedTest.timeMinutes * 60);
     startTimeRef.current = Date.now();
@@ -117,7 +108,6 @@ export default function AIPracticeReadingTest() {
       const convertedGroups: QuestionGroup[] = [];
 
       loadedTest.questionGroups.forEach((group) => {
-        // Add question group
         convertedGroups.push({
           id: group.id,
           question_type: group.question_type,
@@ -126,7 +116,6 @@ export default function AIPracticeReadingTest() {
           end_question: group.end_question,
         });
 
-        // Add questions from this group
         group.questions.forEach((q) => {
           convertedQuestions.push({
             id: q.id,
@@ -152,7 +141,32 @@ export default function AIPracticeReadingTest() {
     }
 
     setLoading(false);
-  }, [testId, navigate]);
+  }, []);
+
+  // Load AI-generated test: first from memory cache, else from Supabase
+  useEffect(() => {
+    if (!testId) {
+      navigate('/ai-practice');
+      return;
+    }
+
+    // Try memory cache first
+    const cachedTest = loadGeneratedTest(testId);
+    if (cachedTest && cachedTest.module === 'reading') {
+      initializeTest(cachedTest);
+      return;
+    }
+
+    // Fallback: load from Supabase
+    loadGeneratedTestAsync(testId).then((t) => {
+      if (!t || t.module !== 'reading') {
+        toast.error('Reading test not found');
+        navigate('/ai-practice');
+        return;
+      }
+      initializeTest(t);
+    });
+  }, [testId, navigate, initializeTest]);
 
   const currentPassage = passages[currentPassageIndex];
   const currentPassageQuestions = questions;
@@ -222,7 +236,10 @@ export default function AIPracticeReadingTest() {
       questionResults,
     };
 
-    savePracticeResult(result);
+    // Save result to Supabase (async)
+    if (user) {
+      savePracticeResultAsync(result, user.id, 'reading');
+    }
     navigate(`/ai-practice/results/${test.id}`);
   };
 

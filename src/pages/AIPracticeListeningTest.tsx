@@ -19,9 +19,10 @@ import { SubmitConfirmDialog } from '@/components/common/SubmitConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { useAuth } from '@/hooks/useAuth';
 import { 
-  loadGeneratedTest, 
-  savePracticeResult,
+  loadGeneratedTest,
+  savePracticeResultAsync,
   GeneratedTest,
   PracticeResult,
   QuestionResult 
@@ -105,6 +106,7 @@ interface QuestionGroup {
 export default function AIPracticeListeningTest() {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   
   const [test, setTest] = useState<GeneratedTest | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -302,7 +304,9 @@ export default function AIPracticeListeningTest() {
       questionResults,
     };
 
-    savePracticeResult(result);
+    if (user) {
+      savePracticeResultAsync(result, user.id, 'listening');
+    }
     navigate(`/ai-practice/results/${test.id}`);
   };
 
