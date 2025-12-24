@@ -40,6 +40,107 @@ export type Database = {
           },
         ]
       }
+      ai_practice_results: {
+        Row: {
+          answers: Json
+          band_score: number | null
+          completed_at: string
+          created_at: string
+          id: string
+          module: string
+          question_results: Json
+          score: number
+          test_id: string
+          time_spent_seconds: number
+          total_questions: number
+          user_id: string
+        }
+        Insert: {
+          answers?: Json
+          band_score?: number | null
+          completed_at?: string
+          created_at?: string
+          id?: string
+          module: string
+          question_results?: Json
+          score?: number
+          test_id: string
+          time_spent_seconds?: number
+          total_questions?: number
+          user_id: string
+        }
+        Update: {
+          answers?: Json
+          band_score?: number | null
+          completed_at?: string
+          created_at?: string
+          id?: string
+          module?: string
+          question_results?: Json
+          score?: number
+          test_id?: string
+          time_spent_seconds?: number
+          total_questions?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_practice_results_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "ai_practice_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_practice_tests: {
+        Row: {
+          audio_format: string | null
+          audio_url: string | null
+          difficulty: string
+          generated_at: string
+          id: string
+          module: string
+          payload: Json
+          question_type: string
+          sample_rate: number | null
+          time_minutes: number
+          topic: string
+          total_questions: number
+          user_id: string
+        }
+        Insert: {
+          audio_format?: string | null
+          audio_url?: string | null
+          difficulty: string
+          generated_at?: string
+          id?: string
+          module: string
+          payload?: Json
+          question_type: string
+          sample_rate?: number | null
+          time_minutes: number
+          topic: string
+          total_questions: number
+          user_id: string
+        }
+        Update: {
+          audio_format?: string | null
+          audio_url?: string | null
+          difficulty?: string
+          generated_at?: string
+          id?: string
+          module?: string
+          payload?: Json
+          question_type?: string
+          sample_rate?: number | null
+          time_minutes?: number
+          topic?: string
+          total_questions?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       flashcard_cards: {
         Row: {
           correct_count: number

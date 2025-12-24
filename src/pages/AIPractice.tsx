@@ -35,7 +35,7 @@ import {
   SpeakingPartType,
   QUESTION_COUNTS,
   getDefaultTime,
-  saveGeneratedTest,
+  saveGeneratedTestAsync,
   setCurrentTest,
   GeneratedTest
 } from '@/types/aiPractice';
@@ -176,9 +176,9 @@ export default function AIPractice() {
         generatedAt: new Date().toISOString(),
       };
 
-      // Save to memory cache first (with full data), then stripped to localStorage
+      // Save to memory cache and persist to Supabase
       setCurrentTest(generatedTest);
-      saveGeneratedTest(generatedTest);
+      await saveGeneratedTestAsync(generatedTest, user.id);
 
       toast({
         title: 'Test Generated!',
@@ -190,6 +190,10 @@ export default function AIPractice() {
         navigate(`/ai-practice/writing/${generatedTest.id}`);
       } else if (activeModule === 'speaking') {
         navigate(`/ai-practice/speaking/${generatedTest.id}`);
+      } else if (activeModule === 'reading') {
+        navigate(`/ai-practice/reading/${generatedTest.id}`);
+      } else if (activeModule === 'listening') {
+        navigate(`/ai-practice/listening/${generatedTest.id}`);
       } else {
         navigate(`/ai-practice/test/${generatedTest.id}`);
       }
