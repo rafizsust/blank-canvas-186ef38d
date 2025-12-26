@@ -123,15 +123,7 @@ export default function AIPracticeResults() {
     };
   }, [testId, navigate, user, authLoading]);
 
-  // Scroll to bottom of chat when new messages arrive
-  useEffect(() => {
-    Object.entries(questionChats).forEach(([qNum, chat]) => {
-      if (chat.messages.length > 0) {
-        const ref = chatEndRefs.current[Number(qNum)];
-        ref?.scrollIntoView({ behavior: 'smooth' });
-      }
-    });
-  }, [questionChats]);
+  // NOTE: Auto-scroll removed to preserve user's scroll position during AI response generation
 
   const toggleQuestion = (qNum: number) => {
     setExpandedQuestions(prev => {
@@ -475,16 +467,28 @@ export default function AIPracticeResults() {
                               {chatState.isOpen ? 'Hide' : 'Ask AI'} about this question
                               {chatState.messages.length > 0 && (
                                 <Badge variant="secondary" className="ml-1">
-                                  {chatState.messages.length}
+                                  {chatState.messages.length} {chatState.messages.length === 1 ? 'message' : 'messages'}
                                 </Badge>
                               )}
                             </Button>
 
                             {chatState.isOpen && (
                               <div className="bg-muted/30 rounded-lg border p-3 space-y-3">
+                                {/* Conversation History Header */}
+                                {chatState.messages.length > 0 && (
+                                  <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                                    <span className="text-xs font-medium text-muted-foreground">
+                                      Conversation History ({chatState.messages.length} {chatState.messages.length === 1 ? 'message' : 'messages'})
+                                    </span>
+                                    <span className="text-xs text-muted-foreground/60">
+                                      Scroll to see all
+                                    </span>
+                                  </div>
+                                )}
+                                
                                 {/* Chat Messages */}
                                 {chatState.messages.length > 0 && (
-                                  <ScrollArea className="max-h-[300px] pr-2">
+                                  <ScrollArea className="max-h-[350px] pr-2">
                                     <div className="space-y-3">
                                       {chatState.messages.map((msg) => (
                                         <div

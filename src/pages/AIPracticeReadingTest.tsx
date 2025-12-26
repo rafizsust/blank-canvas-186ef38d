@@ -100,13 +100,16 @@ export default function AIPracticeReadingTest() {
     startTimeRef.current = Date.now();
 
     // Convert AI passage to expected format
+    // Check if this is a matching headings test - show labels if so
+    const isMatchingHeadings = loadedTest.questionGroups?.some(g => g.question_type === 'MATCHING_HEADINGS');
+    
     if (loadedTest.passage) {
       const passage: Passage = {
         id: loadedTest.passage.id,
         passage_number: 1,
         title: loadedTest.passage.title,
         content: loadedTest.passage.content,
-        show_labels: false,
+        show_labels: isMatchingHeadings, // Enable labels for matching headings
       };
       setPassages([passage]);
     }
@@ -611,7 +614,7 @@ export default function AIPracticeReadingTest() {
                           renderRichText={renderRichText}
                           selectedHeading={selectedHeading}
                           onSelectPlace={handleSelectPlace}
-                          showLabels={false}
+                          showLabels={hasMatchingHeadings}
                           onQuestionFocus={setCurrentQuestion}
                         />
                       )}
@@ -708,16 +711,16 @@ export default function AIPracticeReadingTest() {
                       testId={testId!}
                       passage={currentPassage} 
                       fontSize={fontSize}
-                      hasMatchingHeadings={false}
-                      headingOptions={[]}
-                      headingAnswers={{}}
-                      headingQuestionNumbers={{}}
-                      onHeadingDrop={() => {}}
-                      onHeadingRemove={() => {}}
+                      hasMatchingHeadings={hasMatchingHeadings}
+                      headingOptions={headingOptions}
+                      headingAnswers={headingAnswers}
+                      headingQuestionNumbers={headingQuestionNumbers}
+                      onHeadingDrop={handleHeadingDrop}
+                      onHeadingRemove={handleHeadingRemove}
                       renderRichText={renderRichText}
-                      selectedHeading={null}
-                      onSelectPlace={() => {}}
-                      showLabels={false}
+                      selectedHeading={selectedHeading}
+                      onSelectPlace={handleSelectPlace}
+                      showLabels={hasMatchingHeadings}
                       onQuestionFocus={setCurrentQuestion}
                     />
                   )}
@@ -740,6 +743,14 @@ export default function AIPracticeReadingTest() {
                     renderRichText={renderRichText}
                     getMaxAnswers={getMaxAnswers}
                     getQuestionGroupOptions={getQuestionGroupOptions}
+                    getMatchingSentenceEndingsGroupOptions={getMatchingSentenceEndingsGroupOptions}
+                    getTableSelectionOptions={getTableSelectionOptions}
+                    headingOptions={headingOptions}
+                    headingAnswers={headingAnswers}
+                    paragraphLabels={headingParagraphLabels}
+                    onHeadingAnswerChange={handleHeadingAnswerChange}
+                    selectedHeading={selectedHeading}
+                    onSelectedHeadingChange={setSelectedHeading}
                   />
                 </div>
               )}
