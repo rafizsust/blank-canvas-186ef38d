@@ -80,34 +80,99 @@ export function ReadingPassage({
           setParagraphs(data);
         } else {
           // Fallback: parse from content if no paragraphs in DB
-          const contentParagraphs = passage.content.split('\n\n');
-          const parsed = contentParagraphs.map((p, idx) => {
-            const match = p.trim().match(/^([A-Z])\s(.*)$/s);
-            return {
+          // Support both "[A]" format (AI-generated) and "A " format (traditional)
+          const contentParagraphs = passage.content.split(/\n\n+/);
+          const parsed: Paragraph[] = [];
+          
+          contentParagraphs.forEach((p, idx) => {
+            const trimmed = p.trim();
+            if (!trimmed) return;
+            
+            // Try to match [A] format first (AI-generated passages)
+            let match = trimmed.match(/^\[([A-Z])\]\s*(.*)$/s);
+            if (match) {
+              parsed.push({
+                id: `temp-${idx}`,
+                label: match[1],
+                content: match[2].trim(),
+                is_heading: false,
+                order_index: idx
+              });
+              return;
+            }
+            
+            // Try to match "A " format (traditional)
+            match = trimmed.match(/^([A-Z])\s+(.*)$/s);
+            if (match) {
+              parsed.push({
+                id: `temp-${idx}`,
+                label: match[1],
+                content: match[2].trim(),
+                is_heading: false,
+                order_index: idx
+              });
+              return;
+            }
+            
+            // No label found - could be title or unlabeled paragraph
+            parsed.push({
               id: `temp-${idx}`,
-              label: match ? match[1] : '',
-              content: match ? match[2] : p,
+              label: '',
+              content: trimmed,
               is_heading: false,
               order_index: idx
-            };
-          }).filter(p => p.label || p.content);
-          setParagraphs(parsed);
+            });
+          });
+          
+          setParagraphs(parsed.filter(p => p.content));
         }
       } catch (error) {
         console.error('Error fetching paragraphs:', error);
-        // Fallback to parsing content
-        const contentParagraphs = passage.content.split('\n\n');
-        const parsed = contentParagraphs.map((p, idx) => {
-          const match = p.trim().match(/^([A-Z])\s(.*)$/s);
-          return {
+        // Fallback to parsing content with same improved logic
+        const contentParagraphs = passage.content.split(/\n\n+/);
+        const parsed: Paragraph[] = [];
+        
+        contentParagraphs.forEach((p, idx) => {
+          const trimmed = p.trim();
+          if (!trimmed) return;
+          
+          // Try to match [A] format first (AI-generated passages)
+          let match = trimmed.match(/^\[([A-Z])\]\s*(.*)$/s);
+          if (match) {
+            parsed.push({
+              id: `temp-${idx}`,
+              label: match[1],
+              content: match[2].trim(),
+              is_heading: false,
+              order_index: idx
+            });
+            return;
+          }
+          
+          // Try to match "A " format (traditional)
+          match = trimmed.match(/^([A-Z])\s+(.*)$/s);
+          if (match) {
+            parsed.push({
+              id: `temp-${idx}`,
+              label: match[1],
+              content: match[2].trim(),
+              is_heading: false,
+              order_index: idx
+            });
+            return;
+          }
+          
+          // No label found
+          parsed.push({
             id: `temp-${idx}`,
-            label: match ? match[1] : '',
-            content: match ? match[2] : p,
+            label: '',
+            content: trimmed,
             is_heading: false,
             order_index: idx
-          };
-        }).filter(p => p.label || p.content);
-        setParagraphs(parsed);
+          });
+        });
+        
+        setParagraphs(parsed.filter(p => p.content));
       } finally {
         setLoading(false);
       }
