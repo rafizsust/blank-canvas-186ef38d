@@ -289,6 +289,19 @@ export default function AIPractice() {
     }
   };
 
+  // Calculate estimated generation time for listening based on audio duration
+  const getListeningEstimate = () => {
+    const durationSec = listeningTranscriptPreset === 'custom'
+      ? (listeningUseWordCountMode ? Math.round(customTranscriptWordCount / 150 * 60) : customTranscriptDuration)
+      : LISTENING_TRANSCRIPT_PRESETS[listeningTranscriptPreset].durationSeconds;
+    
+    if (durationSec <= 120) return { text: '15-30 seconds', seconds: 22 };
+    if (durationSec <= 300) return { text: '30-60 seconds', seconds: 45 };
+    return { text: '60-90 seconds', seconds: 75 };
+  };
+
+  const listeningEstimate = getListeningEstimate();
+
   if (isGenerating) {
     return (
       <AILoadingScreen
@@ -296,7 +309,8 @@ export default function AIPractice() {
         description={`Creating a personalized ${activeModule} test with ${questionCount} ${currentQuestionType.replace(/_/g, ' ').toLowerCase()} questions.`}
         progressSteps={progressSteps}
         currentStepIndex={generationStep}
-        estimatedTime={activeModule === 'listening' ? '30-60 seconds' : '15-30 seconds'}
+        estimatedTime={activeModule === 'listening' ? listeningEstimate.text : '15-30 seconds'}
+        estimatedSeconds={activeModule === 'listening' ? listeningEstimate.seconds : 22}
       />
     );
   }
