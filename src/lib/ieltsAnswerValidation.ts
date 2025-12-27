@@ -789,6 +789,28 @@ export function checkAnswer(
     return checkMultipleChoiceMultiple(userAnswer, correctAnswer);
   }
 
+  // For option-id based question types, compare by option id only.
+  // This prevents "A/B/C/D" style strings from making every option appear correct.
+  const optionIdTypes = new Set([
+    'MULTIPLE_CHOICE',
+    'MULTIPLE_CHOICE_SINGLE',
+    'MATCHING_HEADINGS',
+    'MATCHING_INFORMATION',
+    'MATCHING_FEATURES',
+    'MATCHING_CORRECT_LETTER',
+  ]);
+
+  const normalizeOptionId = (s: string) => {
+    const trimmed = (s ?? '').trim();
+    const m = trimmed.match(/^([A-Z]|\d+|[ivxlcdm]+)\b/i);
+    return (m?.[1] ?? trimmed).toUpperCase();
+  };
+
+  if (questionType && optionIdTypes.has(questionType)) {
+    if (!userAnswer || !correctAnswer) return false;
+    return normalizeOptionId(userAnswer) === normalizeOptionId(correctAnswer);
+  }
+
   // Matching Sentence Endings: compare by option id (A/B/C...), not full text.
   if (questionType === 'MATCHING_SENTENCE_ENDINGS') {
     const extractId = (s: string) => {
@@ -803,6 +825,7 @@ export function checkAnswer(
   // Use IELTS-aware validation for other types
   return checkIeltsAnswer(userAnswer, correctAnswer);
 }
+
 
 /**
  * Utility: Count words in an answer (IELTS rules)
