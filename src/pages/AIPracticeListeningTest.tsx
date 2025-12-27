@@ -309,7 +309,10 @@ export default function AIPracticeListeningTest() {
 
     const questionResults: QuestionResult[] = questions.map(q => {
       const userAnswer = answers[q.question_number]?.trim() || '';
-      const correctAnswer = q.correct_answer;
+      const correctAnswer =
+        test.questionGroups?.flatMap(g => g.questions).find(
+          (oq) => oq.question_number === q.question_number
+        )?.correct_answer ?? q.correct_answer;
 
       // Get question type for proper validation
       const questionType = q.question_type || 

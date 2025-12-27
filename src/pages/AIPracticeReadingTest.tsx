@@ -344,9 +344,11 @@ export default function AIPracticeReadingTest() {
           .map(s => s.trim().toUpperCase())
           .filter(Boolean);
         
-        // Get correct answer from the first question in group (all share same correct_answer)
-        const firstQ = questions.find(q => q.question_number === group.start_question);
-        const correctAnswerRaw = firstQ?.correct_answer || '';
+        // Always read correct answers from the saved ai_practice_tests payload (never from user input)
+        const firstQFromTest = test.questionGroups?.flatMap(g => g.questions).find(
+          (oq) => oq.question_number === group.start_question
+        );
+        const correctAnswerRaw = firstQFromTest?.correct_answer || '';
         const correctLetters = correctAnswerRaw
           .split(',')
           .map(s => s.trim().toUpperCase())
@@ -382,8 +384,11 @@ export default function AIPracticeReadingTest() {
       if (processedQuestionNumbers.has(q.question_number)) continue;
       
       const userAnswer = answers[q.question_number]?.trim() || '';
-      const correctAnswer = q.correct_answer;
-      
+      const correctAnswer =
+        test.questionGroups?.flatMap(g => g.questions).find(
+          (oq) => oq.question_number === q.question_number
+        )?.correct_answer ?? q.correct_answer;
+
       const questionType = q.question_type || 
         test.questionGroups?.find(g => 
           g.questions.some(gq => gq.question_number === q.question_number)
