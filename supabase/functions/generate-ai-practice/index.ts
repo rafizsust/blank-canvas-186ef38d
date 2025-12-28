@@ -2092,12 +2092,83 @@ serve(async (req) => {
       });
 
     } else if (module === 'speaking') {
-      // Speaking test generation (simplified)
-      const speakingPrompt = `Generate IELTS Speaking test questions:\nTopic: ${topic}\nPart: ${questionType}\nDifficulty: ${difficulty}\n\nReturn ONLY valid JSON with parts array containing questions.`;
+      // Speaking test generation with official IELTS examiner phrases
+      const isFullTest = questionType === 'FULL_TEST';
+      const includePart1 = isFullTest || questionType === 'PART_1';
+      const includePart2 = isFullTest || questionType === 'PART_2';
+      const includePart3 = isFullTest || questionType === 'PART_3';
+
+      const speakingPrompt = `Generate an official IELTS Speaking test with proper examiner phrases.
+
+TOPIC: ${topic}
+DIFFICULTY: ${difficulty}
+PARTS TO INCLUDE: ${[includePart1 && 'Part 1', includePart2 && 'Part 2', includePart3 && 'Part 3'].filter(Boolean).join(', ')}
+
+OFFICIAL IELTS SPEAKING TEST FORMAT:
+
+PART 1 (Introduction & Interview) - 4-5 minutes:
+- Examiner intro: "Now, in this first part, I'd like to ask you some questions about yourself."
+- Then: "Let's talk about [topic]..." followed by 4-5 simple questions
+- Questions should be personal/familiar topics (home, work, studies, hobbies, etc.)
+- Each question expects 20-30 seconds answer
+
+PART 2 (Individual Long Turn) - 3-4 minutes:
+- Examiner intro: "Now, I'm going to give you a topic and I'd like you to talk about it for one to two minutes. Before you talk, you'll have one minute to think about what you're going to say. You can make some notes if you wish."
+- Provide a cue card with: "Describe [topic]" followed by bullet points "You should say:" with 3-4 prompts
+- After 2 minutes: "Thank you."
+- One optional rounding-off question
+
+PART 3 (Two-way Discussion) - 4-5 minutes:
+- Examiner intro: "We've been talking about [Part 2 topic] and I'd like to discuss one or two more general questions related to this."
+- 4-5 abstract/analytical questions that extend from Part 2 topic
+- Questions should require opinion, analysis, speculation
+- Each question expects 45-60 seconds answer
+
+Return ONLY valid JSON:
+{
+  "topic": "${topic}",
+  "parts": [
+    ${includePart1 ? `{
+      "part_number": 1,
+      "instruction": "Now, in this first part, I'd like to ask you some questions about yourself. Let's talk about [specific topic]...",
+      "questions": [
+        { "question_number": 1, "question_text": "First question about the topic?" },
+        { "question_number": 2, "question_text": "Second question?" },
+        { "question_number": 3, "question_text": "Third question?" },
+        { "question_number": 4, "question_text": "Fourth question?" }
+      ],
+      "time_limit_seconds": 300
+    }${includePart2 || includePart3 ? ',' : ''}` : ''}
+    ${includePart2 ? `{
+      "part_number": 2,
+      "instruction": "Now, I'm going to give you a topic and I'd like you to talk about it for one to two minutes. Before you talk, you'll have one minute to think about what you're going to say. You can make some notes if you wish.",
+      "cue_card_topic": "Describe [something related to topic]",
+      "cue_card_content": "You should say:\\n• first bullet point\\n• second bullet point\\n• third bullet point\\n• and explain why...",
+      "questions": [
+        { "question_number": 1, "question_text": "Optional rounding-off question after 2-minute speech" }
+      ],
+      "preparation_time_seconds": 60,
+      "speaking_time_seconds": 120
+    }${includePart3 ? ',' : ''}` : ''}
+    ${includePart3 ? `{
+      "part_number": 3,
+      "instruction": "We've been talking about [Part 2 topic] and I'd like to discuss one or two more general questions related to this.",
+      "questions": [
+        { "question_number": 1, "question_text": "First analytical/abstract question?" },
+        { "question_number": 2, "question_text": "Second question requiring opinion?" },
+        { "question_number": 3, "question_text": "Third question about implications?" },
+        { "question_number": 4, "question_text": "Fourth speculative question?" }
+      ],
+      "time_limit_seconds": 300
+    }` : ''}
+  ]
+}
+
+Generate realistic, ${difficulty}-level questions appropriate for IELTS. Make questions coherent and thematically connected.`;
 
       const result = await callGemini(geminiApiKey, speakingPrompt);
       if (!result) {
-        return new Response(JSON.stringify({ error: 'Failed to generate speaking test' }), {
+        return new Response(JSON.stringify({ error: getLastGeminiError() }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -2115,25 +2186,32 @@ serve(async (req) => {
         });
       }
 
-      return new Response(JSON.stringify({
-        testId,
-        topic,
-        speakingParts: parsed.parts?.map((p: any) => ({
+      // Process the parts with proper structure
+      const speakingParts = (parsed.parts || []).map((p: any, pIndex: number) => {
+        const partNumber = p.part_number || pIndex + 1;
+        
+        return {
           id: crypto.randomUUID(),
-          part_number: p.part_number,
-          instruction: p.instruction,
-          questions: (p.questions || []).map((q: any) => ({
+          part_number: partNumber,
+          instruction: p.instruction || '',
+          questions: (p.questions || []).map((q: any, qIndex: number) => ({
             id: crypto.randomUUID(),
-            question_number: q.question_number,
-            question_text: q.question_text,
+            question_number: q.question_number || qIndex + 1,
+            question_text: q.question_text || '',
             sample_answer: q.sample_answer,
           })),
           cue_card_topic: p.cue_card_topic,
           cue_card_content: p.cue_card_content,
-          preparation_time_seconds: p.preparation_time_seconds,
-          speaking_time_seconds: p.speaking_time_seconds,
-          time_limit_seconds: p.time_limit_seconds,
-        })) || [],
+          preparation_time_seconds: p.preparation_time_seconds || (partNumber === 2 ? 60 : undefined),
+          speaking_time_seconds: p.speaking_time_seconds || (partNumber === 2 ? 120 : undefined),
+          time_limit_seconds: p.time_limit_seconds || (partNumber === 1 || partNumber === 3 ? 300 : undefined),
+        };
+      });
+
+      return new Response(JSON.stringify({
+        testId,
+        topic: parsed.topic || topic,
+        speakingParts,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
