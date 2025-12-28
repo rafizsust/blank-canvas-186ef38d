@@ -5,7 +5,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { GeminiApiKeyManager } from '@/components/user/GeminiApiKeyManager';
 import { AudioTranscriptionPOC } from '@/components/user/AudioTranscriptionPOC';
-import { ExaminerVoiceSelector } from '@/components/speaking/ExaminerVoiceSelector';
 import { toast } from 'sonner';
 import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
@@ -122,11 +121,8 @@ export default function Settings() {
             <CardHeader>
               <CardTitle>AI Integrations</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent>
               <GeminiApiKeyManager />
-              <div className="border-t pt-6">
-                <ExaminerVoiceSelector />
-              </div>
             </CardContent>
           </Card>
 
