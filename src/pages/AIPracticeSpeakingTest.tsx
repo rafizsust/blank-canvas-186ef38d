@@ -1007,20 +1007,20 @@ export default function AIPracticeSpeakingTest() {
             <p className="text-muted-foreground">Recording your response...</p>
             <p className="text-sm text-muted-foreground">Time remaining: {formatTime(timeLeft)}</p>
             
-            {/* Action buttons */}
+            {/* Action buttons - Restart and Stop */}
             <div className="flex items-center gap-3 mt-4">
               {/* Restart Recording button */}
               <Button 
                 onClick={restartRecording} 
                 variant="outline" 
                 size="lg"
-                className="gap-2"
+                className="gap-2 border-destructive/50 text-destructive hover:bg-destructive/10"
               >
                 <RotateCcw className="w-4 h-4" />
                 Restart Recording
               </Button>
               
-              {/* Stop & Next button */}
+              {/* Stop & Move to Next button */}
               <Button 
                 onClick={handleStopAndNext} 
                 variant="default" 
