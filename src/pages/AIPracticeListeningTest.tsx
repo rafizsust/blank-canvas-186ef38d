@@ -820,15 +820,7 @@ export default function AIPracticeListeningTest() {
                         "font-[var(--font-ielts)] text-foreground"
                       )}
                     >
-                      {/* SimulatedAudioPlayer when TTS fallback is active - NO transcript visible */}
-                      {audioError === 'tts_fallback' && test.transcript && (
-                        <div className="mb-6 p-4 bg-primary/5 rounded-lg border border-primary/20">
-                          <SimulatedAudioPlayer
-                            text={test.transcript}
-                            onComplete={() => setAudioEnded(true)}
-                          />
-                        </div>
-                      )}
+                      {/* Audio player is in header only - no duplicate here */}
 
                       <ListeningQuestions 
                         testId={testId!}
@@ -881,15 +873,7 @@ export default function AIPracticeListeningTest() {
             <div className="md:hidden h-full flex flex-col relative">
               {mobileView === 'questions' ? (
                 <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 pb-20 bg-white font-[var(--font-ielts)] text-foreground">
-                  {/* Mobile SimulatedAudioPlayer if TTS fallback active - NO transcript visible */}
-                  {audioError === 'tts_fallback' && test.transcript && (
-                    <div className="mb-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
-                      <SimulatedAudioPlayer
-                        text={test.transcript}
-                        onComplete={() => setAudioEnded(true)}
-                      />
-                    </div>
-                  )}
+                  {/* Audio player accessible via Audio tab - no duplicate here */}
 
                   <ListeningQuestions 
                     testId={testId!}

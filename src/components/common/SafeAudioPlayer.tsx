@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Play, Pause, Volume2, VolumeX, AlertTriangle, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Play, Pause, Volume2, VolumeX, Loader2 } from "lucide-react";
+import { SimulatedAudioPlayer } from "@/components/listening/SimulatedAudioPlayer";
 
 interface SafeAudioPlayerProps {
   audioUrl?: string | null;
@@ -15,8 +15,14 @@ interface SafeAudioPlayerProps {
   showControls?: boolean;
 }
 
-type AudioState = "loading" | "ready" | "playing" | "paused" | "fallback" | "error";
-
+/**
+ * SafeAudioPlayer - Strict Audio Priority Logic
+ * 
+ * PRIORITY 1: If audioUrl exists AND hasn't failed → render HTML5 Audio player
+ * PRIORITY 2: If audioUrl fails OR no URL → render SimulatedAudioPlayer (TTS)
+ * 
+ * NO transcript is ever shown to prevent cheating.
+ */
 export function SafeAudioPlayer({
   audioUrl,
   fallbackText,
@@ -27,195 +33,113 @@ export function SafeAudioPlayer({
   className = "",
   showControls = true,
 }: SafeAudioPlayerProps) {
-  const [state, setState] = useState<AudioState>("loading");
+  const [loadError, setLoadError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
-  const [usingFallback, setUsingFallback] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const progressIntervalRef = useRef<number | null>(null);
 
-  // Get the best available voice for fallback TTS
-  const getBestVoice = useCallback((): SpeechSynthesisVoice | null => {
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length === 0) return null;
-
-    // Map accent hint to language codes
-    const accentMap: Record<string, string[]> = {
-      US: ["en-US", "en_US"],
-      GB: ["en-GB", "en_GB", "en-UK"],
-      AU: ["en-AU", "en_AU"],
-      IN: ["en-IN", "en_IN"],
-    };
-
-    const preferredLangs = accentHint ? accentMap[accentHint] || ["en-US"] : ["en-US"];
-
-    // Priority order for voice selection
-    const voicePriorities = [
-      // 1. Match accent + high-quality voices
-      (v: SpeechSynthesisVoice) =>
-        preferredLangs.some((l) => v.lang.includes(l.replace("_", "-"))) &&
-        (v.name.includes("Google") || v.name.includes("Microsoft") || v.name.includes("Natural")),
-      // 2. Match accent
-      (v: SpeechSynthesisVoice) =>
-        preferredLangs.some((l) => v.lang.includes(l.replace("_", "-"))),
-      // 3. Any high-quality English voice
-      (v: SpeechSynthesisVoice) =>
-        v.lang.startsWith("en") &&
-        (v.name.includes("Google") || v.name.includes("Microsoft") || v.name.includes("Natural")),
-      // 4. Any English voice
-      (v: SpeechSynthesisVoice) => v.lang.startsWith("en"),
-    ];
-
-    for (const priority of voicePriorities) {
-      const match = voices.find(priority);
-      if (match) return match;
-    }
-
-    // Last resort: first available voice
-    return voices[0];
-  }, [accentHint]);
-
-  // Start fallback TTS
-  const startFallbackTTS = useCallback(() => {
-    if (!fallbackText) {
-      setState("error");
-      onError?.("No audio or text available");
-      return;
-    }
-
-    setUsingFallback(true);
-    toast.warning("Audio file missing. Using System Voice.", {
-      icon: <AlertTriangle className="h-4 w-4" />,
-      duration: 3000,
-    });
-
-    // Cancel any existing speech
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(fallbackText);
-    utteranceRef.current = utterance;
-
-    // Wait for voices to load
-    const setVoice = () => {
-      const voice = getBestVoice();
-      if (voice) {
-        utterance.voice = voice;
-        utterance.rate = 0.9; // Slightly slower for clarity
-        utterance.pitch = 1;
-        utterance.volume = isMuted ? 0 : volume;
-      }
-    };
-
-    if (window.speechSynthesis.getVoices().length > 0) {
-      setVoice();
-    } else {
-      window.speechSynthesis.onvoiceschanged = setVoice;
-    }
-
-    utterance.onstart = () => {
-      setState("playing");
-    };
-
-    utterance.onend = () => {
-      setState("paused");
-      setProgress(100);
-      onEnded?.();
-    };
-
-    utterance.onerror = (e) => {
-      console.error("TTS error:", e);
-      setState("error");
-      onError?.("Speech synthesis failed");
-    };
-
-    setState("fallback");
-    window.speechSynthesis.speak(utterance);
-  }, [fallbackText, getBestVoice, isMuted, volume, onEnded, onError]);
-
-  // Load audio
+  // Cleanup on unmount
   useEffect(() => {
-    if (!audioUrl) {
-      // No audio URL - try fallback immediately
-      if (fallbackText) {
-        startFallbackTTS();
-      } else {
-        setState("error");
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
       }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+      }
+    };
+  }, []);
+
+  // Load and validate audio URL
+  useEffect(() => {
+    // Reset state when URL changes
+    setLoadError(false);
+    setIsLoading(true);
+    setIsPlaying(false);
+    setProgress(0);
+
+    // No URL provided - go straight to fallback
+    if (!audioUrl) {
+      console.log("SafeAudioPlayer: No audioUrl provided, using TTS fallback");
+      setLoadError(true);
+      setIsLoading(false);
       return;
     }
 
-    setState("loading");
-
+    // Create audio element and attempt to load
     const audio = new Audio();
     audioRef.current = audio;
-
     audio.preload = "auto";
-    audio.volume = isMuted ? 0 : volume;
+    audio.volume = isMuted ? 0 : 1;
 
     audio.onloadedmetadata = () => {
+      console.log("SafeAudioPlayer: R2 audio loaded successfully", { duration: audio.duration });
       setDuration(audio.duration);
-      setState("ready");
+      setIsLoading(false);
       if (autoPlay) {
         audio.play().catch((err) => {
-          console.error("Autoplay failed:", err);
+          console.error("SafeAudioPlayer: Autoplay failed:", err);
         });
       }
     };
 
-    audio.onplay = () => setState("playing");
-    audio.onpause = () => setState("paused");
+    audio.onplay = () => setIsPlaying(true);
+    audio.onpause = () => setIsPlaying(false);
+    
     audio.onended = () => {
-      setState("paused");
+      setIsPlaying(false);
       setProgress(0);
       onEnded?.();
     };
 
     audio.onerror = (e) => {
-      console.error("Audio load error:", e, audio.error);
-      // Try fallback
-      if (fallbackText) {
-        startFallbackTTS();
-      } else {
-        setState("error");
-        onError?.("Audio failed to load");
-      }
+      console.error("SafeAudioPlayer: R2 Audio Failed, switching to TTS", e, audio.error);
+      setLoadError(true);
+      setIsLoading(false);
+      onError?.("Audio failed to load");
     };
 
-    // Handle 404 specifically
+    // Set src to trigger load
     audio.src = audioUrl;
 
-    // Also do a fetch check for 404
+    // Also do a HEAD request to catch 404s early
     fetch(audioUrl, { method: "HEAD" })
       .then((res) => {
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
       })
-      .catch(() => {
-        // Audio URL is not accessible
-        if (fallbackText) {
-          audio.src = ""; // Cancel audio load
-          startFallbackTTS();
+      .catch((err) => {
+        console.error("SafeAudioPlayer: HEAD check failed for R2 URL:", err);
+        if (audioRef.current) {
+          audioRef.current.src = ""; // Cancel audio load
         }
+        setLoadError(true);
+        setIsLoading(false);
       });
 
     return () => {
       audio.pause();
       audio.src = "";
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
-      }
-      window.speechSynthesis.cancel();
     };
-  }, [audioUrl, fallbackText, autoPlay, startFallbackTTS, onEnded, onError]);
+  }, [audioUrl, autoPlay, onEnded, onError]);
 
-  // Update progress
+  // Update muted state
   useEffect(() => {
-    if (state === "playing" && audioRef.current && !usingFallback) {
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? 0 : 1;
+    }
+  }, [isMuted]);
+
+  // Progress tracking
+  useEffect(() => {
+    if (isPlaying && audioRef.current && !loadError) {
       progressIntervalRef.current = window.setInterval(() => {
         const audio = audioRef.current;
         if (audio && audio.duration) {
@@ -234,42 +158,20 @@ export function SafeAudioPlayer({
         clearInterval(progressIntervalRef.current);
       }
     };
-  }, [state, usingFallback]);
-
-  // Update volume
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : volume;
-    }
-    if (utteranceRef.current) {
-      utteranceRef.current.volume = isMuted ? 0 : volume;
-    }
-  }, [volume, isMuted]);
+  }, [isPlaying, loadError]);
 
   const togglePlay = () => {
-    if (usingFallback) {
-      if (state === "playing") {
-        window.speechSynthesis.pause();
-        setState("paused");
-      } else {
-        window.speechSynthesis.resume();
-        setState("playing");
-      }
-    } else {
-      const audio = audioRef.current;
-      if (!audio) return;
+    const audio = audioRef.current;
+    if (!audio) return;
 
-      if (state === "playing") {
-        audio.pause();
-      } else {
-        audio.play().catch(console.error);
-      }
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play().catch(console.error);
     }
   };
 
   const handleSeek = (value: number[]) => {
-    if (usingFallback) return; // Can't seek with TTS
-
     const audio = audioRef.current;
     if (!audio || !audio.duration) return;
 
@@ -284,15 +186,32 @@ export function SafeAudioPlayer({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  if (state === "error") {
+  // ===== STRICT PRIORITY LOGIC =====
+
+  // PRIORITY 2: Fallback to SimulatedAudioPlayer (TTS)
+  // This happens when: no URL, URL failed to load, or explicit error
+  if (loadError || !audioUrl) {
+    if (!fallbackText) {
+      // No fallback text available - show minimal error
+      return (
+        <div className={`flex items-center gap-2 text-destructive ${className}`}>
+          <span className="text-sm">Audio unavailable</span>
+        </div>
+      );
+    }
+
+    // Render SimulatedAudioPlayer with TTS (no autoPlay prop - SimulatedAudioPlayer handles it)
     return (
-      <div className={`flex items-center gap-2 text-destructive ${className}`}>
-        <AlertTriangle className="h-4 w-4" />
-        <span className="text-sm">Audio unavailable</span>
-      </div>
+      <SimulatedAudioPlayer
+        text={fallbackText}
+        accentHint={accentHint as "US" | "GB" | "AU" | undefined}
+        onComplete={onEnded}
+        className={className}
+      />
     );
   }
 
+  // PRIORITY 1: Render HTML5 Audio player (R2 URL is valid)
   if (!showControls) {
     return null;
   }
@@ -306,12 +225,12 @@ export function SafeAudioPlayer({
         variant="ghost"
         size="icon"
         onClick={togglePlay}
-        disabled={state === "loading"}
+        disabled={isLoading}
         className="h-10 w-10 rounded-full"
       >
-        {state === "loading" ? (
+        {isLoading ? (
           <Loader2 className="h-5 w-5 animate-spin" />
-        ) : state === "playing" ? (
+        ) : isPlaying ? (
           <Pause className="h-5 w-5" />
         ) : (
           <Play className="h-5 w-5" />
@@ -328,7 +247,7 @@ export function SafeAudioPlayer({
           max={100}
           step={0.1}
           onValueChange={handleSeek}
-          disabled={state === "loading" || usingFallback}
+          disabled={isLoading}
           className="flex-1"
         />
         <span className="text-xs text-muted-foreground w-10">
@@ -349,14 +268,6 @@ export function SafeAudioPlayer({
           <Volume2 className="h-4 w-4" />
         )}
       </Button>
-
-      {/* Fallback Indicator */}
-      {usingFallback && (
-        <span className="text-xs text-amber-500 flex items-center gap-1">
-          <AlertTriangle className="h-3 w-3" />
-          TTS
-        </span>
-      )}
     </div>
   );
 }
