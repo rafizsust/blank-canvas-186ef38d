@@ -553,6 +553,24 @@ export function ReadingQuestions({
 
                     // Get the first (and only) question for this group
                     const groupQuestion = typeQuestions[0];
+                    
+                    // Define start question number for this group
+                    const startQ = firstQuestionInGroup.question_number;
+                    const endQ = typeQuestions[typeQuestions.length - 1].question_number;
+                    const mcqQuestionRange = startQ === endQ ? String(startQ) : `${startQ}-${endQ}`;
+                    
+                    // Get max answers from group options, getter, or infer from text
+                    const maxAnswersForGroup = (() => {
+                      const groupOpts: any = groupData?.options || {};
+                      if (typeof groupOpts?.max_answers === 'number') return groupOpts.max_answers;
+                      if (getMaxAnswers) {
+                        const fromGetter = getMaxAnswers(firstQuestionInGroup.question_group_id || null);
+                        if (typeof fromGetter === 'number' && fromGetter > 0) return fromGetter;
+                      }
+                      // Infer from question text
+                      const inferred = inferMaxAnswersFromText(groupQuestion?.question_text);
+                      return inferred ?? 2;
+                    })();
 
                     const extractOptions = (raw: any): string[] => {
                       if (Array.isArray(raw)) return raw;
