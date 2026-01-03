@@ -2622,6 +2622,47 @@ serve(async (req) => {
       
       await updateQuotaTracking(serviceClient, user.id, totalTokensUsed);
 
+      // === MONOLOGUE RESCUE: If TTS failed but we have dialogue, convert to monologue for browser TTS ===
+      let finalTranscript = parsed.dialogue;
+      let speakerNames = parsed.speaker_names || {};
+      
+      if (!audio && parsed.dialogue && useTwoSpeakers) {
+        console.log('[Monologue Rescue] Audio generation failed, converting dialogue to monologue for browser TTS...');
+        try {
+          const monologuePrompt = `Rewrite the following dialogue as a detailed monologue or narration. 
+Remove all speaker labels (e.g., "Speaker1:", "Speaker2:", names followed by colons). 
+Convert the conversation into a flowing narrative that a single narrator would read aloud.
+Keep ALL factual information, numbers, dates, names, and details that would be needed to answer test questions.
+Keep SSML break tags like <break time='2s'/> for pacing.
+Return ONLY the raw monologue text, no JSON wrapper.
+
+DIALOGUE TO CONVERT:
+${parsed.dialogue}`;
+          
+          const monologueResult = await callGemini(geminiApiKey, monologuePrompt, 1, { dbKeys: dbApiKeys, serviceClient });
+          
+          if (monologueResult && monologueResult.trim().length > 50) {
+            console.log('[Monologue Rescue] Successfully converted to monologue');
+            finalTranscript = monologueResult.trim();
+            // Update speaker names for monologue
+            speakerNames = { Speaker1: 'Narrator' };
+          } else {
+            console.warn('[Monologue Rescue] Conversion returned empty/short result, using original dialogue');
+          }
+        } catch (rescueErr) {
+          console.error('[Monologue Rescue] Failed to convert, using original dialogue:', rescueErr);
+        }
+      }
+      
+      // Process transcript to replace Speaker1/Speaker2 with real names (for original dialogue case)
+      let displayTranscript = finalTranscript;
+      if (speakerNames.Speaker1) {
+        displayTranscript = displayTranscript.replace(/Speaker1:/g, `${speakerNames.Speaker1}:`);
+      }
+      if (speakerNames.Speaker2) {
+        displayTranscript = displayTranscript.replace(/Speaker2:/g, `${speakerNames.Speaker2}:`);
+      }
+
       let groupOptions: any = undefined;
       if (questionType === 'MAP_LABELING') {
         groupOptions = {
@@ -2656,16 +2697,6 @@ serve(async (req) => {
         explanation: q.explanation,
         options: q.options || null,
       }));
-
-      // Process transcript to replace Speaker1/Speaker2 with real names
-      let displayTranscript = parsed.dialogue;
-      const speakerNames = parsed.speaker_names || {};
-      if (speakerNames.Speaker1) {
-        displayTranscript = displayTranscript.replace(/Speaker1:/g, `${speakerNames.Speaker1}:`);
-      }
-      if (speakerNames.Speaker2) {
-        displayTranscript = displayTranscript.replace(/Speaker2:/g, `${speakerNames.Speaker2}:`);
-      }
 
       const responsePayload = {
         testId,

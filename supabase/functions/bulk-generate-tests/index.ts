@@ -358,7 +358,7 @@ async function processGenerationJob(
 
       let audioUrl: string | null = null;
 
-      // LISTENING: Generate audio
+      // LISTENING: Generate audio with MONOLOGUE RESCUE on failure
       if (module === "listening") {
         const scriptText = content.dialogue || content.script || "";
         
@@ -371,8 +371,68 @@ async function processGenerationJob(
             );
           } catch (audioError) {
             console.error(`[Job ${jobId}] Listening audio failed for test ${i + 1}:`, audioError);
-            // For Listening: DISCARD if audio fails
-            throw new Error(`Audio generation failed: ${audioError instanceof Error ? audioError.message : "Unknown"}`);
+            
+            // === MONOLOGUE RESCUE: Convert dialogue to monologue for browser TTS fallback ===
+            if (!monologue && scriptText.includes('Speaker')) {
+              console.log(`[Job ${jobId}] Attempting monologue rescue for test ${i + 1}...`);
+              try {
+                const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+                if (LOVABLE_API_KEY) {
+                  const monologuePrompt = `Rewrite the following dialogue as a detailed monologue or narration. 
+Remove all speaker labels (e.g., "Speaker1:", "Speaker2:", names followed by colons). 
+Convert the conversation into a flowing narrative that a single narrator would read aloud.
+Keep ALL factual information, numbers, dates, names, and details that would be needed to answer test questions.
+Return ONLY the raw monologue text, no JSON wrapper.
+
+DIALOGUE TO CONVERT:
+${scriptText}`;
+                  
+                  const rescueResponse = await fetchWithTimeout(
+                    "https://ai.gateway.lovable.dev/v1/chat/completions",
+                    {
+                      method: "POST",
+                      headers: {
+                        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        model: "google/gemini-2.5-flash",
+                        messages: [
+                          { role: "user", content: monologuePrompt },
+                        ],
+                      }),
+                    },
+                    60_000
+                  );
+                  
+                  if (rescueResponse.ok) {
+                    const rescueData = await rescueResponse.json();
+                    const rescuedMonologue = rescueData.choices?.[0]?.message?.content;
+                    
+                    if (rescuedMonologue && rescuedMonologue.trim().length > 50) {
+                      console.log(`[Job ${jobId}] Monologue rescue successful for test ${i + 1}`);
+                      content.dialogue = rescuedMonologue.trim();
+                      content.script = rescuedMonologue.trim();
+                      content.speaker_names = { Speaker1: 'Narrator' };
+                      content.monologue_rescued = true;
+                      // Continue without throwing - test will be saved with browser TTS fallback
+                    } else {
+                      throw new Error('Monologue rescue returned empty result');
+                    }
+                  } else {
+                    throw new Error('Monologue rescue API call failed');
+                  }
+                } else {
+                  throw new Error('LOVABLE_API_KEY not available for rescue');
+                }
+              } catch (rescueError) {
+                console.error(`[Job ${jobId}] Monologue rescue failed for test ${i + 1}:`, rescueError);
+                throw new Error(`Audio generation failed and monologue rescue failed: ${audioError instanceof Error ? audioError.message : "Unknown"}`);
+              }
+            } else {
+              // Already a monologue or no dialogue - cannot rescue
+              throw new Error(`Audio generation failed: ${audioError instanceof Error ? audioError.message : "Unknown"}`);
+            }
           }
         }
       }
@@ -407,7 +467,7 @@ async function processGenerationJob(
         content_payload: content,
         audio_url: audioUrl,
         transcript: content.dialogue || content.script || null,
-        status: module === "listening" && !audioUrl ? "failed" : "ready",
+        status: module === "listening" && !audioUrl && !content.monologue_rescued ? "failed" : "ready",
         is_published: false,
       };
 
