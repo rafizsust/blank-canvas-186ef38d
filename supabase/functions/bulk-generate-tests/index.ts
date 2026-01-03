@@ -479,6 +479,7 @@ function getQuestionTypesForModule(module: string, selectedType: string): string
       return [
         "TRUE_FALSE_NOT_GIVEN",
         "MULTIPLE_CHOICE_SINGLE",
+        "MULTIPLE_CHOICE_MULTIPLE",
         "MATCHING_HEADINGS",
         "SENTENCE_COMPLETION",
         "SUMMARY_COMPLETION",
@@ -634,6 +635,33 @@ Return ONLY valid JSON:
   "instruction": "Choose the correct letter, A, B, C or D.",
   "questions": [
     {"question_number": 1, "question_text": "Question?", "options": ["A Option", "B Option", "C Option", "D Option"], "correct_answer": "A", "explanation": "Why"}
+  ]
+}`;
+
+    case "MULTIPLE_CHOICE_MULTIPLE":
+      // For MCMA: Generate 3 questions where user selects 3 correct answers from 6 options
+      return basePrompt + `Create a multiple choice question where the test-taker must choose THREE correct answers from six options (A-F).
+
+CRITICAL REQUIREMENTS:
+- Generate exactly 3 correct answers (e.g., A, C, E)
+- Generate exactly 6 options total (A through F)
+- The question should ask about the passage content
+- Each option must be a complete, distinct statement
+
+Return ONLY valid JSON:
+{
+  "passage": {"title": "Title", "content": "Full passage with detailed information"},
+  "instruction": "Choose THREE letters, A-F.",
+  "max_answers": 3,
+  "questions": [
+    {
+      "question_number": 1,
+      "question_text": "Which THREE of the following statements are true according to the passage?",
+      "options": ["A First statement", "B Second statement", "C Third statement", "D Fourth statement", "E Fifth statement", "F Sixth statement"],
+      "correct_answer": "A,C,E",
+      "max_answers": 3,
+      "explanation": "A is correct because..., C is correct because..., E is correct because..."
+    }
   ]
 }`;
 

@@ -2135,7 +2135,23 @@ serve(async (req) => {
               
               // Get max_answers from first question, group options, or infer from question text
               const firstQ = qsRaw[0];
-              const explicitMax = firstQ?.max_answers ?? g?.max_answers ?? groupOptions?.max_answers;
+              const explicitMax = firstQ?.max_answers ?? g?.max_answers ?? groupOptions?.max_answers ?? payload?.max_answers;
+              
+              // Get options from first question or group
+              const extractedOptions = firstQ?.options ?? g?.options ?? groupOptions?.options ?? payload?.options;
+              
+              // Normalize options to array
+              let normalizedOptions: string[] = [];
+              if (Array.isArray(extractedOptions)) {
+                normalizedOptions = extractedOptions;
+              } else if (extractedOptions?.options && Array.isArray(extractedOptions.options)) {
+                normalizedOptions = extractedOptions.options;
+              }
+              
+              // IMPORTANT: For MCMA, options MUST be set on groupOptions for the renderer
+              if (normalizedOptions.length > 0) {
+                groupOptions = { ...groupOptions, options: normalizedOptions };
+              }
               
               if (explicitMax) {
                 groupOptions = { ...groupOptions, max_answers: explicitMax };
@@ -2143,7 +2159,8 @@ serve(async (req) => {
                 // Infer from question text (e.g., "Which THREE statements...")
                 const text = firstQ.question_text;
                 const match = text.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b\s+(?:statements|answers|options|letters?|of the following)\b/i)
-                  || text.match(/\bwhich\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i);
+                  || text.match(/\bwhich\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i)
+                  || text.match(/choose\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)/i);
                 if (match) {
                   const raw = match[1].toLowerCase();
                   const wordMap: Record<string, number> = {
@@ -2157,14 +2174,30 @@ serve(async (req) => {
                 }
               }
               
-              // Also ensure options array is properly set for checkboxes
-              if (!groupOptions.options && firstQ?.options && Array.isArray(firstQ.options)) {
-                groupOptions = { ...groupOptions, options: firstQ.options };
+              // Default to 3 if still not set (standard MCMA is Choose THREE)
+              if (!groupOptions.max_answers) {
+                groupOptions = { ...groupOptions, max_answers: 3 };
               }
+              
+              // For MCMA, also copy options to each question for the renderer
+              console.log(`[MCMA Preset] max_answers: ${groupOptions.max_answers}, options count: ${normalizedOptions.length}`);
             }
 
             const questions = qsRaw.map((q: any, idx: number) => {
               const qType = normalizeType(q?.question_type || type);
+              
+              // For MCMA: Ensure each question has the shared options from group
+              let qOptions = Array.isArray(q?.options)
+                ? q.options
+                : Array.isArray(q?.options?.options)
+                  ? q.options.options
+                  : null;
+              
+              // For MCMA, inherit options from groupOptions if question doesn't have its own
+              if (type === 'MULTIPLE_CHOICE_MULTIPLE' && !qOptions && groupOptions?.options) {
+                qOptions = groupOptions.options;
+              }
+              
               return {
                 id: q?.id || crypto.randomUUID(),
                 question_number: q?.question_number ?? idx + (g?.start_question ?? 1),
@@ -2172,13 +2205,11 @@ serve(async (req) => {
                 question_text: q?.question_text ?? q?.text ?? '',
                 correct_answer: q?.correct_answer ?? q?.correctAnswer ?? '',
                 explanation: q?.explanation ?? '',
-                options: Array.isArray(q?.options)
-                  ? q.options
-                  : Array.isArray(q?.options?.options)
-                    ? q.options.options
-                    : null,
+                options: qOptions,
+                option_format: q?.option_format ?? groupOptions?.option_format ?? 'A',
                 heading: q?.heading ?? null,
                 table_data: q?.table_data ?? groupOptions?.table_data ?? null,
+                max_answers: type === 'MULTIPLE_CHOICE_MULTIPLE' ? (q?.max_answers ?? groupOptions?.max_answers ?? 3) : undefined,
               };
             });
 

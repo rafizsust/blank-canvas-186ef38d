@@ -534,6 +534,41 @@ export async function loadPracticeResultsAsync(userId: string): Promise<Practice
   }));
 }
 
+/** Load a specific practice result by test ID directly. */
+export async function loadPracticeResultByTestIdAsync(userId: string, testId: string): Promise<PracticeResult | null> {
+  // Handle preset test IDs (remove "preset-" prefix if present)
+  const normalizedTestId = testId.startsWith('preset-') ? testId : testId;
+  
+  const { data, error } = await supabase
+    .from('ai_practice_results')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('test_id', normalizedTestId)
+    .order('completed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Failed to load AI practice result by test ID:', error);
+    return null;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    testId: data.test_id,
+    answers: data.answers as unknown as Record<number, string>,
+    score: data.score,
+    totalQuestions: data.total_questions,
+    bandScore: Number(data.band_score ?? 0),
+    completedAt: data.completed_at,
+    timeSpent: data.time_spent_seconds,
+    questionResults: data.question_results as unknown as QuestionResult[],
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Synchronous helpers (for backwards compatibility during migration)
 // These are thin wrappers around the async functions for pages that use sync API.
