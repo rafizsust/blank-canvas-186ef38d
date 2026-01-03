@@ -66,35 +66,43 @@ export default function AIPracticeHistory() {
     if (!user) return;
     
     try {
-      // Load tests
+      // Load tests with a safe limit to prevent infinite loading
       const { data: testsData, error: testsError } = await supabase
         .from('ai_practice_tests')
         .select('*')
         .eq('user_id', user.id)
-        .order('generated_at', { ascending: false });
+        .order('generated_at', { ascending: false })
+        .limit(100); // Safe limit to prevent massive queries
 
       if (testsError) throw testsError;
       setTests(testsData || []);
 
-      // Load results for these tests
+      // Load results for these tests (batch in chunks to avoid massive IN queries)
       if (testsData && testsData.length > 0) {
         const testIds = testsData.map(t => t.id);
-        const { data: resultsData } = await supabase
-          .from('ai_practice_results')
-          .select('*')
-          .eq('user_id', user.id)
-          .in('test_id', testIds);
+        const resultsMap: Record<string, AIPracticeResult> = {};
+        
+        // Batch load in chunks of 50 to avoid query limits
+        const chunkSize = 50;
+        for (let i = 0; i < testIds.length; i += chunkSize) {
+          const chunk = testIds.slice(i, i + chunkSize);
+          const { data: resultsData } = await supabase
+            .from('ai_practice_results')
+            .select('*')
+            .eq('user_id', user.id)
+            .in('test_id', chunk);
 
-        if (resultsData) {
-          const resultsMap: Record<string, AIPracticeResult> = {};
-          resultsData.forEach(r => {
-            // Keep the most recent result per test
-            if (!resultsMap[r.test_id] || new Date(r.completed_at) > new Date(resultsMap[r.test_id].completed_at)) {
-              resultsMap[r.test_id] = r;
-            }
-          });
-          setTestResults(resultsMap);
+          if (resultsData) {
+            resultsData.forEach(r => {
+              // Keep the most recent result per test
+              if (!resultsMap[r.test_id] || new Date(r.completed_at) > new Date(resultsMap[r.test_id].completed_at)) {
+                resultsMap[r.test_id] = r;
+              }
+            });
+          }
         }
+        
+        setTestResults(resultsMap);
       }
     } catch (err: any) {
       console.error('Failed to load tests:', err);

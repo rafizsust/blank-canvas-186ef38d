@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   loadGeneratedTestAsync,
-  loadPracticeResultsAsync,
+  loadPracticeResultByTestIdAsync,
   GeneratedTest,
   PracticeResult,
   QuestionResult,
@@ -106,13 +106,13 @@ export default function AIPracticeResults() {
         return;
       }
 
-      // The result insert is async; retry briefly so the results page is reliable.
-      let matchingResult: PracticeResult | undefined;
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const results = await loadPracticeResultsAsync(user.id);
-        matchingResult = results.find(r => r.testId === testId);
+      // Load result directly by (user_id, test_id) for reliability
+      // Retry briefly as the insert is async
+      let matchingResult: PracticeResult | null = null;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        matchingResult = await loadPracticeResultByTestIdAsync(user.id, testId);
         if (matchingResult) break;
-        await new Promise(r => setTimeout(r, 750));
+        await new Promise(r => setTimeout(r, 800));
       }
 
       if (cancelled) return;
