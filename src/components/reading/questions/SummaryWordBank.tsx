@@ -63,6 +63,18 @@ export function SummaryWordBank({
     return { id: item.id, text: item.text };
   };
 
+  // Look up full word text from stored answer ID
+  const getWordText = (answerId: string): string => {
+    const item = wordBank.find(w => {
+      const normalized = normalizeWordBankItem(w);
+      return normalized.id === answerId;
+    });
+    if (item) {
+      return normalizeWordBankItem(item).text;
+    }
+    return answerId; // fallback to showing the ID if not found
+  };
+
   const handleDragStart = (item: string | WordBankItem) => {
     const wb = normalizeWordBankItem(item);
     setDraggedWord(wb.id);
@@ -150,7 +162,7 @@ export function SummaryWordBank({
                 )}
               >
                 {answer ? (
-                  <span className="font-medium text-sm">{answer}</span>
+                  <span className="font-medium text-sm">{getWordText(answer)}</span>
                 ) : (
                   <span className="text-muted-foreground font-bold text-sm">
                     {questionNumber}
@@ -184,7 +196,6 @@ export function SummaryWordBank({
                       "bg-background hover:border-primary hover:bg-primary/5 active:bg-primary/10"
                     )}
                   >
-                    <span className="font-bold mr-1">{wb.id}</span>
                     <span>{wb.text}</span>
                   </div>
                 ) : (
