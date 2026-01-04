@@ -969,6 +969,7 @@ export function checkAnswer(
     'MATCHING_INFORMATION',
     'MATCHING_FEATURES',
     'MATCHING_CORRECT_LETTER',
+    'DRAG_AND_DROP_OPTIONS',
   ]);
 
   const normalizeOptionId = (s: string) => {
