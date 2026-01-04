@@ -537,10 +537,10 @@ export function ListeningQuestions({
               })()
             ) : group.question_type === 'MULTIPLE_CHOICE_MULTIPLE' ? (
               (() => {
-                // IMPORTANT: In this codebase, "MULTIPLE_CHOICE_MULTIPLE" is used for two different UX patterns:
-                // 1) Shared options + multiple sub-questions (dropdown per question)  -> MultipleChoiceMultipleQuestions
-                // 2) One question where the user selects N letters (checkboxes)        -> MultipleChoiceMultiple
-                // Admin presets commonly use (1). AI listening often uses (2).
+                // MCMA in Listening should match Reading MCMA UX:
+                // - One checkbox list (select N letters)
+                // - Answer stored on start_question
+                // Some older/broken presets were generated without options; if so, fall back to Fill-in-Blank.
 
                 const groupOptionsRaw = group.options;
                 const firstQ = groupQuestions[0];
@@ -550,96 +550,84 @@ export function ListeningQuestions({
                 if (raw.length === 0) raw = parseOpts((firstQ as any)?.options);
 
                 const normalizedOptions = extractOptions(raw).map((opt) => {
-                  // Normalize "A. Text" / "A) Text" -> "Text" (components generate labels themselves)
+                  // Normalize "A. Text" / "A) Text" -> "Text" (component generates labels itself)
                   const m = String(opt).match(/^\s*([A-Za-z]|\d+)\s*[\.|\)]\s*(.+)$/);
                   return m?.[2]?.trim() || String(opt);
                 });
 
-                // 2) Determine config + ranges
+                // 2) Determine config
                 const configObj = typeof groupOptionsRaw === 'string'
-                  ? (() => { try { return JSON.parse(groupOptionsRaw); } catch { return {}; } })()
+                  ? (() => {
+                      try {
+                        return JSON.parse(groupOptionsRaw || '{}');
+                      } catch {
+                        return {};
+                      }
+                    })()
                   : groupOptionsRaw;
 
-                const optionFormat = configObj?.option_format || (firstQ as any)?.option_format || 'A';
+                const optionFormat = (configObj as any)?.option_format || (firstQ as any)?.option_format || 'A';
 
-                // Heuristic: if we have >1 question in this group, render the "shared options" variant.
-                const isSharedOptionsGroup = groupQuestions.length > 1;
+                let maxAnswers = Number((configObj as any)?.max_answers);
+                if (!maxAnswers || maxAnswers < 1) {
+                  const range = group.end_question - group.start_question + 1;
+                  if (range > 1) maxAnswers = range;
+                  else {
+                    const instr = String(group.instruction || '').toUpperCase();
+                    if (instr.includes('THREE')) maxAnswers = 3;
+                    else if (instr.includes('TWO')) maxAnswers = 2;
+                    else maxAnswers = 2;
+                  }
+                }
 
-                if (isSharedOptionsGroup) {
+                // 3) Broken preset fallback: MCMA type but no options were generated.
+                // Render as Fill-in-Blank so the test is still answerable.
+                if (normalizedOptions.length === 0) {
                   return (
-                    <div key={group.id} className="space-y-3">
-                      <MultipleChoiceMultipleQuestions
-                        testId={testId}
-                        questions={groupQuestions}
-                        groupOptions={normalizedOptions}
-                        groupOptionFormat={optionFormat}
-                        answers={answers}
-                        onAnswerChange={onAnswerChange}
-                        fontSize={fontSize}
-                        renderRichText={renderRichText}
-                      />
+                    <div key={group.id} className="space-y-3 mt-2">
+                      {groupQuestions.map((q) => (
+                        <FillInBlank
+                          key={q.id}
+                          testId={testId}
+                          question={{ ...q, question_type: 'FILL_IN_BLANK' }}
+                          answer={answers[q.question_number]}
+                          onAnswerChange={(value) => onAnswerChange(q.question_number, value)}
+                          renderRichText={renderRichText}
+                          stripLeadingQuestionNumber={stripLeadingQuestionNumber}
+                        />
+                      ))}
                     </div>
                   );
                 }
 
-                // 3) Fallback: single-question "select N letters" variant
-                let maxAnswers = Number(configObj?.max_answers);
-
-                // If maxAnswers is missing, infer from instruction (e.g., "Choose TWO letters") else default to 2.
-                if (!maxAnswers || maxAnswers < 1) {
-                  const instr = String(group.instruction || '').toUpperCase();
-                  if (instr.includes('THREE')) maxAnswers = 3;
-                  else if (instr.includes('TWO')) maxAnswers = 2;
-                  else maxAnswers = 2;
-                }
-
                 const startQ = group.start_question;
-                const endQ = startQ + Math.max(2, maxAnswers) - 1;
-                const mcqQuestionRange = `${startQ}-${endQ}`;
 
                 return (
-                  <div key={group.id} className="space-y-6">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1 space-y-3">
-                        {firstQ?.heading && (
-                          <div className="mb-2 font-bold text-foreground">
-                            <QuestionTextWithTools
-                              testId={testId}
-                              contentId={`${firstQ.id}-heading`}
-                              text={firstQ.heading.replace(/Questions?\s+\d+(?:[-–]\d+)?/i, `Questions ${mcqQuestionRange}`)}
-                              fontSize={fontSize}
-                              renderRichText={renderRichText}
-                              isActive={false}
-                            />
-                          </div>
-                        )}
+                  <div key={group.id} className="space-y-3">
+                    <QuestionTextWithTools
+                      contentId={firstQ?.id || group.id}
+                      testId={testId}
+                      text={firstQ?.question_text || ''}
+                      fontSize={fontSize}
+                      renderRichText={renderRichText}
+                      isActive={isActiveGroup}
+                    />
 
-                        <QuestionTextWithTools
-                          contentId={firstQ?.id || group.id}
-                          testId={testId}
-                          text={firstQ?.question_text || ''}
-                          fontSize={fontSize}
-                          renderRichText={renderRichText}
-                          isActive={isActiveGroup}
-                        />
-
-                        <MultipleChoiceMultiple
-                          testId={testId}
-                          renderRichText={renderRichText}
-                          question={{
-                            id: firstQ?.id || group.id,
-                            question_number: startQ,
-                            question_text: firstQ?.question_text || '',
-                            options: normalizedOptions,
-                            option_format: optionFormat,
-                          }}
-                          answer={answers[startQ]}
-                          onAnswerChange={(value) => onAnswerChange(startQ, value)}
-                          isActive={isActiveGroup}
-                          maxAnswers={maxAnswers}
-                        />
-                      </div>
-                    </div>
+                    <MultipleChoiceMultiple
+                      testId={testId}
+                      renderRichText={renderRichText}
+                      question={{
+                        id: firstQ?.id || group.id,
+                        question_number: startQ,
+                        question_text: firstQ?.question_text || '',
+                        options: normalizedOptions,
+                        option_format: optionFormat,
+                      }}
+                      answer={answers[startQ]}
+                      onAnswerChange={(value) => onAnswerChange(startQ, value)}
+                      isActive={isActiveGroup}
+                      maxAnswers={maxAnswers}
+                    />
                   </div>
                 );
               })()
