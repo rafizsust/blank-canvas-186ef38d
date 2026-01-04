@@ -1921,16 +1921,28 @@ Return ONLY valid JSON:
   ]
 }`;
     case 'MATCHING_CORRECT_LETTER':
-      return basePrompt + `2. Create ${effectiveQuestionCount} matching questions.
+      // Calculate number of distractor options (2-3 more than number of questions)
+      const numDistractors = Math.min(3, Math.max(2, Math.ceil(effectiveQuestionCount * 0.4)));
+      const totalOptions = effectiveQuestionCount + numDistractors;
+      return basePrompt + `2. Create ${effectiveQuestionCount} drag-and-drop matching questions.
+
+CRITICAL REQUIREMENTS:
+- Generate EXACTLY ${totalOptions} options (letters A through ${String.fromCharCode(64 + totalOptions)}) - this is MORE than the number of questions
+- Only ${effectiveQuestionCount} options will be correct answers, the rest are DISTRACTORS
+- Each option must be a plausible answer that fits the context
+- Distractors should be realistic but clearly wrong based on the dialogue
+- The "options" array MUST contain ${totalOptions} items with "letter" and "text" fields
+- Each question's correct_answer must be a single letter from the options
 
 Return ONLY valid JSON:
 {
-  "dialogue": "Speaker1: Each department has responsibilities...<break time='500ms'/>",
+  "dialogue": "Speaker1: Each department has specific responsibilities...<break time='500ms'/> John handles all the advertising campaigns...<break time='300ms'/> Sarah manages the quarterly reports...",
   "speaker_names": {"Speaker1": "Manager"},
   "instruction": "Match each person to their department.",
-  "options": [{"letter": "A", "text": "Marketing"}, {"letter": "B", "text": "Finance"}, {"letter": "C", "text": "HR"}],
+  "options": [{"letter": "A", "text": "Marketing"}, {"letter": "B", "text": "Finance"}, {"letter": "C", "text": "Human Resources"}, {"letter": "D", "text": "Operations"}, {"letter": "E", "text": "Sales"}],
   "questions": [
-    {"question_number": 1, "question_text": "John works in", "correct_answer": "A", "explanation": "John is in Marketing"}
+    {"question_number": 1, "question_text": "John works in", "correct_answer": "A", "explanation": "John handles advertising campaigns, which is Marketing."},
+    {"question_number": 2, "question_text": "Sarah works in", "correct_answer": "B", "explanation": "Sarah manages quarterly reports, which is Finance."}
   ]
 }`;
 
