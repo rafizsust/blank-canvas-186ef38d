@@ -628,6 +628,7 @@ function getQuestionTypesForModule(module: string, selectedType: string): string
       return [
         "FILL_IN_BLANK",
         "MULTIPLE_CHOICE_SINGLE",
+        "MULTIPLE_CHOICE_MULTIPLE",
         "TABLE_COMPLETION",
         "NOTE_COMPLETION",
         "MATCHING_CORRECT_LETTER",
@@ -1012,6 +1013,55 @@ Return ONLY valid JSON:
   "instruction": "Choose the correct letter, A, B or C.",
   "questions": [
     {"question_number": 1, "question_text": "What is the main topic?", "options": ["A First", "B Second", "C Third"], "correct_answer": "A", "explanation": "Why"}
+  ]
+}`;
+
+    case "MULTIPLE_CHOICE_MULTIPLE":
+      // MCMA for Listening presets must be the same UX as Reading MCMA:
+      // Questions 1-3 are a SINGLE checkbox task (select 3 answers from A-F).
+      // We duplicate the same question object 3 times so the UI can label the range consistently.
+      return basePrompt + `Create ONE multiple choice question set where the test-taker must choose THREE correct answers from six options (A-F).
+
+CRITICAL REQUIREMENTS:
+- This question set spans Questions 1 to 3 (3 question numbers)
+- Return EXACTLY 3 question objects with question_number 1, 2, and 3
+- ALL 3 question objects must have IDENTICAL content (same question_text, same options, same correct_answer)
+- Provide exactly 6 options labeled A-F
+- correct_answer MUST be a comma-separated list of exactly 3 letters (e.g., "A,C,E")
+- Set max_answers to 3
+- The statements MUST be clearly supported by the dialogue (so answers are objectively checkable)
+
+Return ONLY valid JSON:
+{
+  "dialogue": "Speaker1: ...<break time='500ms'/>\nSpeaker2: ...",
+  "speaker_names": {"Speaker1": "Name", "Speaker2": "Name"},
+  "instruction": "Questions 1-3. Choose THREE letters, A-F.",
+  "max_answers": 3,
+  "questions": [
+    {
+      "question_number": 1,
+      "question_text": "Which THREE of the following statements are correct?",
+      "options": ["A ...", "B ...", "C ...", "D ...", "E ...", "F ..."],
+      "correct_answer": "A,C,E",
+      "max_answers": 3,
+      "explanation": "A is correct because... C is correct because... E is correct because..."
+    },
+    {
+      "question_number": 2,
+      "question_text": "Which THREE of the following statements are correct?",
+      "options": ["A ...", "B ...", "C ...", "D ...", "E ...", "F ..."],
+      "correct_answer": "A,C,E",
+      "max_answers": 3,
+      "explanation": "A is correct because... C is correct because... E is correct because..."
+    },
+    {
+      "question_number": 3,
+      "question_text": "Which THREE of the following statements are correct?",
+      "options": ["A ...", "B ...", "C ...", "D ...", "E ...", "F ..."],
+      "correct_answer": "A,C,E",
+      "max_answers": 3,
+      "explanation": "A is correct because... C is correct because... E is correct because..."
+    }
   ]
 }`;
 
