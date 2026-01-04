@@ -31,22 +31,20 @@ export function FlowchartCompletion({
   const isVertical = direction === 'vertical';
   const ArrowIcon = isVertical ? ArrowDown : ArrowRight;
 
-  // Parse label to extract text before/after blank marker
-  const parseBlankLabel = (label: string, questionNumber: number) => {
-    // Match patterns like (3), [3], __, ___, ..., ______
-    const blankPattern = new RegExp(`\\(${questionNumber}\\)|\\[${questionNumber}\\]|_{2,}|\\.{3,}|______`);
-    const match = label.match(blankPattern);
-    
-    if (match && match.index !== undefined) {
-      return {
-        before: label.substring(0, match.index).trim(),
-        after: label.substring(match.index + match[0].length).trim(),
-        hasMarker: true,
-      };
-    }
-    
-    // No marker found - just show label with input after
-    return { before: label, after: '', hasMarker: false };
+  // Helper to determine if we should render an arrow
+  const shouldRenderArrow = (index: number, total: number) => index < total - 1;
+
+  // Strip blank markers from label text (they'll be replaced with input)
+  const stripBlankMarker = (label: string, questionNumber?: number) => {
+    if (!questionNumber) return label;
+    // Remove patterns like (3), [3], __, ___, ..., ______
+    return label
+      .replace(new RegExp(`\\(${questionNumber}\\)`, 'g'), '')
+      .replace(new RegExp(`\\[${questionNumber}\\]`, 'g'), '')
+      .replace(/_{2,}/g, '')
+      .replace(/\.{3,}/g, '')
+      .replace(/______/g, '')
+      .trim();
   };
 
   return (
@@ -61,16 +59,17 @@ export function FlowchartCompletion({
       )}>
         {steps.map((step, index) => {
           const isActive = step.questionNumber === currentQuestion;
-          const answer = step.questionNumber ? answers[step.questionNumber] : undefined;
-          const isLast = index === steps.length - 1;
-          const showInput = step.isBlank && step.questionNumber;
+          const showInput = !!step.questionNumber;
+          const qNum = step.questionNumber;
+          const val = qNum ? answers[qNum] || '' : '';
+          const cleanLabel = stripBlankMarker(step.label, qNum);
 
           return (
             <div key={step.id} className={cn(
               "flex items-center",
               isVertical ? "flex-col" : "flex-row"
             )}>
-              {/* Flowchart Box */}
+              {/* Step Box */}
               <div
                 className={cn(
                   "relative border-2 rounded-lg p-4 min-w-[180px] max-w-[280px] text-center transition-all",
@@ -79,41 +78,30 @@ export function FlowchartCompletion({
                     : "border-border bg-card hover:border-muted-foreground/50"
                 )}
               >
-                {showInput ? (
-                  <div className="text-muted-foreground text-sm leading-relaxed">
-                    {(() => {
-                      const { before, after } = parseBlankLabel(step.label, step.questionNumber!);
-                      
-                      return (
-                        <span className="inline items-baseline flex-wrap">
-                          {before && <span>{before} </span>}
-                          <span className="inline-flex items-baseline">
-                            <Input
-                              type="text"
-                              value={answer || ''}
-                              onChange={(e) => onAnswerChange(step.questionNumber!, e.target.value)}
-                              placeholder={String(step.questionNumber)}
-                              className={cn(
-                                "inline-block h-7 min-w-[100px] max-w-[140px] text-sm rounded-[3px] text-center placeholder:font-bold placeholder:text-foreground/70 align-baseline",
-                                isActive
-                                  ? "border-primary focus:ring-primary"
-                                  : "border-border"
-                              )}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </span>
-                          {after && <span> {after}</span>}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  <span className="text-foreground font-medium">{step.label}</span>
-                )}
+                <div className="flex flex-wrap items-baseline justify-center gap-1">
+                  {/* Label Text */}
+                  <span className="text-muted-foreground text-sm">
+                    {cleanLabel}
+                  </span>
+
+                  {/* Inline Input (Fixes New Line Issue) */}
+                  {showInput && (
+                    <span className="inline-flex items-baseline">
+                      <Input
+                        type="text"
+                        value={val}
+                        onChange={(e) => onAnswerChange(qNum!, e.target.value)}
+                        className="h-7 min-w-[120px] max-w-[180px] border-b-2 border-t-0 border-x-0 border-muted-foreground/40 rounded-none px-1 py-0 focus-visible:ring-0 focus-visible:border-primary bg-transparent text-center font-semibold text-primary"
+                        placeholder={`(${qNum})`}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* Arrow */}
-              {!isLast && (
+              {/* Arrow Connector */}
+              {shouldRenderArrow(index, steps.length) && (
                 <div className={cn(
                   "flex items-center justify-center text-muted-foreground",
                   isVertical ? "py-2" : "px-2"
