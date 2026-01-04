@@ -454,8 +454,12 @@ export default function AIPracticeListeningTest() {
         }
 
         // For TABLE_COMPLETION, ensure table_data is preserved in group options
+        // Check multiple locations: group.options.table_data, group.table_data, or root payload table_data
         if (groupType === 'TABLE_COMPLETION') {
-          const tableData = group.options?.table_data || (group as any).table_data;
+          const tableData = group.options?.table_data || 
+                           (group as any).table_data || 
+                           (loadedTest as any).table_data ||
+                           (loadedTest as any).payload?.table_data;
           if (tableData) {
             groupOptions = { ...groupOptions, table_data: tableData };
           }
@@ -465,7 +469,12 @@ export default function AIPracticeListeningTest() {
           const qt = normalizeType(q.question_type) || groupType;
           
           // For TABLE_COMPLETION, also include table_data on the question if available
-          const questionTableData = (q as any).table_data || group.options?.table_data || (group as any).table_data;
+          // Check all possible locations for table_data
+          const questionTableData = (q as any).table_data || 
+                                   group.options?.table_data || 
+                                   (group as any).table_data ||
+                                   (loadedTest as any).table_data ||
+                                   (loadedTest as any).payload?.table_data;
           
           return {
             id: q.id,

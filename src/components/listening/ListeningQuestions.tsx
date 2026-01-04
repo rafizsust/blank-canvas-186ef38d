@@ -88,35 +88,70 @@ export function ListeningQuestions({
   };
 
   // Normalize AI-practice listening table_data which may come as:
-  // { headers: string[], rows: Array<Array<{text?:string,isBlank?:boolean,questionNumber?:number}>> }
+  // Format 1 (AI generated): { headers: string[], rows: Array<Array<{text?:string,isBlank?:boolean,questionNumber?:number}>> }
+  // Format 2 (Bulk admin/presets): Array of row arrays where each cell is {content, has_question, question_number?}
+  // Format 3 (Already normalized): TableData array format
   const normalizeAiListeningTableData = (raw: any): TableData => {
     if (!raw) return [];
 
-    // Already in our expected TableData format
-    if (Array.isArray(raw)) return raw as TableData;
+    // Already in our expected TableData format (array of arrays with proper cell objects)
+    if (Array.isArray(raw)) {
+      // Check if first row first cell has 'content' property - if so, it's already normalized
+      if (raw.length > 0 && Array.isArray(raw[0]) && raw[0].length > 0) {
+        const firstCell = raw[0][0];
+        if (firstCell && typeof firstCell === 'object' && 'content' in firstCell) {
+          return raw as TableData;
+        }
+      }
+      // Otherwise it might be some other array format, return as-is
+      return raw as TableData;
+    }
 
+    // AI format: { headers: [...], rows: [[...], [...]] }
     const headers = Array.isArray(raw.headers) ? raw.headers : [];
     const rows = Array.isArray(raw.rows) ? raw.rows : [];
 
+    // Convert headers to cell objects (first row)
     const headerRow = headers.map((h: any) => ({
       has_question: false,
-      content: String(h ?? ''),
+      content: typeof h === 'string' ? h : (h?.content ?? h?.text ?? String(h ?? '')),
       alignment: 'left' as const,
     }));
 
+    // Convert body rows - handle various cell formats
     const bodyRows = rows.map((r: any[]) =>
       (Array.isArray(r) ? r : []).map((cell: any) => {
-        // Blank cell (AI format)
-        if (cell?.isBlank) {
+        // Already properly formatted cell
+        if (cell && typeof cell === 'object' && 'content' in cell) {
+          return {
+            has_question: Boolean(cell.has_question),
+            content: String(cell.content ?? ''),
+            question_number: cell.question_number,
+            alignment: (cell.alignment as 'left' | 'center' | 'right') || 'left',
+          };
+        }
+
+        // Blank cell (AI format with isBlank flag)
+        if (cell?.isBlank || cell?.is_blank) {
           return {
             has_question: true,
             content: '',
-            question_number: Number(cell.questionNumber),
+            question_number: Number(cell.questionNumber ?? cell.question_number ?? 0),
             alignment: 'left' as const,
           };
         }
 
-        // Text cell (AI format)
+        // Cell with has_question flag (alternate AI format)
+        if (cell?.has_question) {
+          return {
+            has_question: true,
+            content: String(cell.content ?? cell.text ?? ''),
+            question_number: Number(cell.questionNumber ?? cell.question_number ?? 0),
+            alignment: (cell.alignment as 'left' | 'center' | 'right') || 'left',
+          };
+        }
+
+        // Plain text cell (AI format)
         const text = typeof cell === 'string'
           ? cell
           : (cell?.text ?? cell?.content ?? '');
