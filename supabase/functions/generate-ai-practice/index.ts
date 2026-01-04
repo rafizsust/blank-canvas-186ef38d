@@ -2044,19 +2044,35 @@ Return ONLY valid JSON:
   ]
 }`;
 
-    case 'DRAG_AND_DROP_OPTIONS':
+    case 'DRAG_AND_DROP_OPTIONS': {
+      // Ensure options > questions (2-3 distractors)
+      const numDistractors = Math.min(3, Math.max(2, Math.ceil(effectiveQuestionCount * 0.4)));
+      const totalOptions = effectiveQuestionCount + numDistractors;
+      const lastLetter = String.fromCharCode(64 + totalOptions);
+
       return basePrompt + `2. Create ${effectiveQuestionCount} drag-and-drop questions with extra distractor options.
+
+CRITICAL REQUIREMENTS:
+- You MUST return a \"drag_options\" array with EXACTLY ${totalOptions} items.
+- The number of options MUST be greater than the number of questions.
+- Options should be short (1-4 words), realistic, and all plausible in context.
+- Include ${numDistractors} DISTRACTOR options that are plausible but incorrect.
+- Each question_text MUST contain a blank using 2+ underscores (e.g., ________).
+- Each question's correct_answer MUST be a SINGLE LETTER from A to ${lastLetter}.
+- Letter mapping rule: A corresponds to drag_options[0], B to drag_options[1], etc.
 
 Return ONLY valid JSON:
 {
-  "dialogue": "Speaker1: Each department has different responsibilities...<break time='500ms'/>",
-  "speaker_names": {"Speaker1": "Department Head"},
-  "instruction": "Match each person to their responsibility.",
-  "drag_options": ["Managing budget", "Training staff", "Customer service", "Quality control", "Marketing"],
-  "questions": [
-    {"question_number": 1, "question_text": "____ is John's main focus.", "correct_answer": "Managing budget", "explanation": "John handles budget"}
+  \"dialogue\": \"Speaker1: Each department has different responsibilities...<break time='500ms'/>\",
+  \"speaker_names\": {\"Speaker1\": \"Department Head\"},
+  \"instruction\": \"Match each person to their responsibility.\",
+  \"drag_options\": [\"Marketing\", \"Finance\", \"Human Resources\", \"Operations\", \"Sales\"],
+  \"questions\": [
+    {\"question_number\": 1, \"question_text\": \"John works in ________.\", \"correct_answer\": \"A\", \"explanation\": \"John handles advertising campaigns, which is Marketing.\"}
   ]
 }`;
+    }
+
 
     default:
       return basePrompt + `2. Create ${effectiveQuestionCount} fill-in-the-blank questions.
@@ -3083,8 +3099,117 @@ ${parsed.dialogue}`;
       } else if (questionType === 'NOTE_COMPLETION' && parsed.note_sections) {
         groupOptions = { note_sections: parsed.note_sections };
       } else if (questionType === 'DRAG_AND_DROP_OPTIONS') {
-        groupOptions = { options: parsed.drag_options || [] };
+        // Robustly ensure drag-and-drop options always exist and are MORE than the number of questions.
+        const isLetterId = (s: string) => /^[A-Z]$/.test((s ?? '').trim().toUpperCase());
+        const norm = (s: string) => (s ?? '').trim().toLowerCase();
+        const labelOf = (idx: number) => String.fromCharCode(65 + idx);
+
+        const qList = Array.isArray(parsed.questions) ? parsed.questions : [];
+        const qCount = qList.length;
+        const numDistractors = Math.min(3, Math.max(2, Math.ceil(Math.max(1, qCount) * 0.4)));
+        const requiredTotalOptions = Math.max(0, qCount + numDistractors);
+
+        // Accept multiple possible keys from model output
+        let options: string[] = [];
+        if (Array.isArray(parsed.drag_options)) options = parsed.drag_options;
+        else if (Array.isArray(parsed.options)) options = parsed.options;
+
+        options = options
+          .filter((x: any): x is string => typeof x === 'string')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+
+        // If model forgot options, start from the question correct answers (text form)
+        const correctRaw = qList
+          .map((q: any) => String(q?.correct_answer ?? '').trim())
+          .filter(Boolean);
+
+        const correctTexts = correctRaw.filter((a: string) => !isLetterId(a));
+        if (options.length === 0 && correctTexts.length) {
+          options = Array.from(new Set(correctTexts));
+        }
+
+        // Ensure every text correct answer is present in options
+        for (const ca of correctTexts) {
+          if (!options.some((o: string) => norm(o) === norm(ca))) options.push(ca);
+        }
+
+        // Add distractors extracted from dialogue if we still don't have enough options
+        const rawDialogue = typeof parsed.dialogue === 'string' ? parsed.dialogue : '';
+        const cleanDialogue = rawDialogue
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/Speaker\s*\d+\s*:/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        const candidates: string[] = [];
+
+        // Quoted phrases often contain good option candidates
+        for (const re of [/"([^\"]{3,80})"/g, /'([^']{3,80})'/g]) {
+          let m: RegExpExecArray | null;
+          while ((m = re.exec(cleanDialogue))) {
+            const t = (m[1] ?? '').trim();
+            if (t) candidates.push(t);
+          }
+        }
+
+        // Capitalized phrase chunks (names/places)
+        {
+          const re = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/g;
+          let m: RegExpExecArray | null;
+          while ((m = re.exec(cleanDialogue))) {
+            const t = (m[1] ?? '').trim();
+            if (t && t.length <= 40) candidates.push(t);
+          }
+        }
+
+        // Fallback: longer single words
+        {
+          const re = /\b[A-Za-z]{5,}\b/g;
+          let m: RegExpExecArray | null;
+          while ((m = re.exec(cleanDialogue))) {
+            const t = (m[0] ?? '').trim();
+            if (t && t.length <= 24) candidates.push(t);
+          }
+        }
+
+        const pushIfGood = (t: string) => {
+          const s = t.trim();
+          if (!s) return;
+          if (s.toLowerCase() === 'speaker') return;
+          if (options.some((o: string) => norm(o) === norm(s))) return;
+          options.push(s);
+        };
+
+        for (const c of candidates) {
+          if (requiredTotalOptions && options.length >= requiredTotalOptions) break;
+          pushIfGood(c);
+        }
+
+        // If still short, pad with generic plausible distractors
+        const generic = ['Not mentioned', 'No information', 'Not specified', 'None of these'];
+        for (const g of generic) {
+          if (requiredTotalOptions && options.length >= requiredTotalOptions) break;
+          pushIfGood(g);
+        }
+
+        const finalOptions = requiredTotalOptions ? options.slice(0, requiredTotalOptions) : options;
+        parsed.drag_options = finalOptions;
+
+        // Convert text correct answers -> letter ids based on option position
+        if (Array.isArray(parsed.questions) && finalOptions.length) {
+          parsed.questions = parsed.questions.map((q: any) => {
+            const ca = String(q?.correct_answer ?? '').trim();
+            if (!ca) return q;
+            if (isLetterId(ca)) return { ...q, correct_answer: ca.toUpperCase() };
+            const idx = finalOptions.findIndex((o: string) => norm(o) === norm(ca));
+            return idx >= 0 ? { ...q, correct_answer: labelOf(idx) } : q;
+          });
+        }
+
+        groupOptions = { options: finalOptions, option_format: 'A' };
       } else if (questionType === 'MULTIPLE_CHOICE_MULTIPLE' && parsed.questions?.[0]?.options) {
+
         // MCMA: Include options and max_answers in groupOptions for the renderer (matching reading MCMA format)
         const mcmaOptions = parsed.questions[0].options;
         const mcmaMaxAnswers = parsed.max_answers ?? parsed.questions[0]?.max_answers ?? 3;
