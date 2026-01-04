@@ -2224,6 +2224,24 @@ serve(async (req) => {
                 groupOptions = { type, options: groupOptions, option_format: 'A' };
               }
 
+              // Ensure bulk/admin presets for TABLE_COMPLETION carry table_data into group options
+              // The bulk-generate-tests prompt outputs table_data at the root level of the payload
+              // or inside groupOptions.table_data - need to check both locations
+              if (type === 'TABLE_COMPLETION') {
+                const tableDataSource = g?.options?.table_data || payload.table_data || g?.table_data;
+                if (tableDataSource) {
+                  if (Array.isArray(groupOptions)) {
+                    groupOptions = { options: groupOptions };
+                  }
+                  if (!groupOptions || typeof groupOptions !== 'object') {
+                    groupOptions = {};
+                  }
+                  if (!groupOptions.table_data) {
+                    groupOptions = { ...groupOptions, table_data: tableDataSource };
+                  }
+                }
+              }
+
               const questions = qsRaw.map((q: any, idx: number) => {
                 const qType = normalizeType(q?.question_type || type);
                 return {
